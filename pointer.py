@@ -1,101 +1,156 @@
 import cv2
 import numpy as np
+import json
 
-mouse_pos = (0, 0)
-zoom_level = 1.0
-pan_x = 0
-pan_y = 0
+# =========================================
+# SETTINGS
+# =========================================
+IMG1_PATH = "1.jpg"
+IMG2_PATH = "2.jpg"
+OUTPUT_FILE = "matches.json"
 
+# =========================================
+# LOAD IMAGES
+# =========================================
+img1 = cv2.imread(IMG1_PATH)
+img2 = cv2.imread(IMG2_PATH)
+
+h1, w1 = img1.shape[:2]
+h2, w2 = img2.shape[:2]
+
+# gleiche Höhe
+scale = h1 / h2
+img2 = cv2.resize(img2, (int(w2 * scale), h1))
+
+combined = np.hstack((img1, img2))
+
+# =========================================
+# STATE
+# =========================================
+points_img1 = []
+points_img2 = []
+temp_point = None
+
+# =========================================
+# DRAW FUNCTION (WICHTIG FIXED)
+# =========================================
+def redraw():
+    display = combined.copy()
+
+    # alle gespeicherten Punkte
+    for i in range(len(points_img1)):
+        x1, y1 = points_img1[i]
+        x2, y2 = points_img2[i]
+        x2_shift = x2 + w1
+
+        # Punkte
+        cv2.circle(display, (x1, y1), 8, (0, 0, 255), -1)
+        cv2.circle(display, (x2_shift, y2), 8, (0, 255, 0), -1)
+
+        # Linie
+        cv2.line(display, (x1, y1), (x2_shift, y2), (255, 0, 0), 2)
+
+        # Index
+        cv2.putText(display, str(i), (x1+5, y1-5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
+        cv2.putText(display, str(i), (x2_shift+5, y2-5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
+
+    # temporärer Punkt (wichtig!)
+    if temp_point is not None:
+        cv2.circle(display, temp_point, 10, (0, 255, 255), 2)
+
+    cv2.imshow("Matcher", display)
+
+# =========================================
+# MOUSE CALLBACK
+# =========================================
 def mouse_callback(event, x, y, flags, param):
-    global mouse_pos, zoom_level, pan_x, pan_y
-    
-    # Rückrechnung auf Original-Koordinaten bei Zoom
-    mouse_pos = (int(x / zoom_level + pan_x), int(y / zoom_level + pan_y))
+    global temp_point
 
+    if event == cv2.EVENT_LBUTTONDOWN:
 
-def get_points(image_path, window_name):
-    global mouse_pos, zoom_level, pan_x, pan_y
-    
-    points = []
-    img = cv2.imread(image_path)
-    
-    if img is None:
-        print(f"Fehler: {image_path} konnte nicht geladen werden!")
-        return points
-    
-    clone = img.copy()
-    h, w = img.shape[:2]
-    
-    # Skaliere Bild wenn zu groß
-    scale = 1.0
-    if w > 1200 or h > 900:
-        scale = min(1200 / w, 900 / h)
-        img = cv2.resize(img, (int(w * scale), int(h * scale)))
-        clone = img.copy()
-    
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, 1200, 900)
-    cv2.setMouseCallback(window_name, mouse_callback)
-    
-    print(f"\n{window_name}:")
-    print(f"  P = Punkt setzen")
-    print(f"  Z = Letzten Punkt löschen")
-    print(f"  +/- = Zoom")
-    print(f"  Pfeiltasten = Verschieben")
-    print(f"  ESC = Fertig")
-    print(f"\nWähle 5 Punkte auf dem Kreisrahmen...")
-    
-    while len(points) < 5:
-        display = clone.copy()
-        
-        # Zeichne Grid/Overlay
-        h_d, w_d = display.shape[:2]
-        
-        # Vertikale und horizontale Linien (Hilfslinien)
-        cv2.line(display, (w_d // 2, 0), (w_d // 2, h_d), (100, 100, 100), 1)
-        cv2.line(display, (0, h_d // 2), (w_d, h_d // 2), (100, 100, 100), 1)
-        
-        # Maus-Vorschau mit großem Kreis
-        cv2.circle(display, mouse_pos, 15, (0, 255, 0), 2)
-        cv2.circle(display, mouse_pos, 3, (0, 255, 0), -1)
-        
-        # Text mit Koordinaten
-        text = f"Maus: {mouse_pos} | Punkte: {len(points)}/5"
-        cv2.putText(display, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        # Zeichne bereits gesetzte Punkte
-        for i, p in enumerate(points):
-            cv2.circle(display, p, 10, (0, 0, 255), 2)
-            cv2.putText(display, str(i + 1), (p[0] - 5, p[1] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        
-        cv2.imshow(window_name, display)
-        key = cv2.waitKey(1) & 0xFF
-        
-        if key == ord('p') or key == ord('P'):
-            # Rückrechnung auf Original-Koordinaten
-            orig_pos = (int(mouse_pos[0] / scale), int(mouse_pos[1] / scale))
-            points.append(orig_pos)
-            print(f"  Punkt {len(points)}: {orig_pos}")
-            cv2.circle(clone, mouse_pos, 10, (0, 0, 255), 2)
-        
-        elif key == ord('z') or key == ord('Z'):
-            if points:
-                removed = points.pop()
-                print(f"  Punkt gelöscht: {removed}")
-                clone = img.copy()
-                for i, p in enumerate(points):
-                    cv2.circle(clone, p, 10, (0, 0, 255), 2)
-        
-        elif key == 27:  # ESC
-            break
-    
-    # Speichern mit original Größe
-    if scale < 1.0:
-        save_img = cv2.resize(clone, (w, h))
-    else:
-        save_img = clone
-    
-    cv2.imwrite(f'{window_name}_pts.png', save_img)
-    cv2.destroyAllWindows()
-    return points
+        # LEFT IMAGE
+        if x < w1:
+            temp_point = (x, y)
+            print(f"[TEMP] Image1: {temp_point}")
 
+        # RIGHT IMAGE
+        else:
+            if temp_point is None:
+                print("ERROR: First click LEFT image")
+                return
+
+            x2 = x - w1
+            y2 = y
+
+            points_img1.append(temp_point)
+            points_img2.append((x2, y2))
+
+            print(f"[PAIR] {temp_point} <-> {(x2,y2)}")
+
+            temp_point = None
+
+    redraw()
+
+# =========================================
+# SAVE / LOAD
+# =========================================
+def save_points():
+    with open(OUTPUT_FILE, "w") as f:
+        json.dump({
+            "points_img1": points_img1,
+            "points_img2": points_img2
+        }, f, indent=2)
+    print("Saved!")
+
+def load_points():
+    global points_img1, points_img2
+    try:
+        with open(OUTPUT_FILE, "r") as f:
+            data = json.load(f)
+            points_img1 = data["points_img1"]
+            points_img2 = data["points_img2"]
+        print("Loaded!")
+    except:
+        print("No file found")
+    redraw()
+
+# =========================================
+# MAIN
+# =========================================
+cv2.namedWindow("Matcher")
+cv2.setMouseCallback("Matcher", mouse_callback)
+
+print("""
+Click LEFT → click RIGHT
+
+Controls:
+u = undo
+s = save
+l = load
+q = quit
+""")
+
+redraw()
+
+while True:
+    key = cv2.waitKey(10) & 0xFF
+
+    if key == ord('q'):
+        break
+
+    elif key == ord('u'):
+        if points_img1:
+            points_img1.pop()
+            points_img2.pop()
+            print("Undo last pair")
+            redraw()
+
+    elif key == ord('s'):
+        save_points()
+
+    elif key == ord('l'):
+        load_points()
+
+cv2.destroyAllWindows()
