@@ -53,34 +53,61 @@ warped = cv2.warpPerspective(img1, H, (w, h))
 
 show(warped, "Warped Image")
 
-
 # -----------------------------
-# 5. Mask both images to the circle
+# 5. Fit circle from points (BEST SOLUTION)
 # -----------------------------
-center = (w // 2, h // 2)
-radius = min(center[0], center[1])
 
+# Punkte extrahieren
+x = pts_img2[:, 0]
+y = pts_img2[:, 1]
+
+# Kreis-Fit (Least Squares)
+A = np.c_[2*x, 2*y, np.ones(len(x))]
+b = x**2 + y**2
+
+c, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+
+cx, cy, c0 = c
+center = (int(cx), int(cy))
+radius = int(np.sqrt(c0 + cx**2 + cy**2))
+
+print(f"Circle from points: center={center}, radius={radius}")
+
+# Maske
 circle_mask = np.zeros((h, w), dtype=np.uint8)
 cv2.circle(circle_mask, center, radius, 255, -1)
 
+# Debug
+debug = img2.copy()
+cv2.circle(debug, center, radius, (0,255,0), 2)
+show(debug, "Fitted Circle")
+# -----------------------------
+# 5.5 Apply circle mask to both images (FIX)
+# -----------------------------
 masked_img2 = cv2.bitwise_and(img2, img2, mask=circle_mask)
 masked_warped = cv2.bitwise_and(warped, warped, mask=circle_mask)
 
 show(masked_img2, "Masked Image 2")
-show(masked_warped, "Masked Warped Image 1")
-
+show(masked_warped, "Masked Warped Image")
 
 # -----------------------------
-# 6. Combine the two halves to eliminate people
+# 6. Combine (vectorized version)
 # -----------------------------
-# Split a bit to the right of the half (adjust offset as needed)
-offset = 50
-x_split = w // 2 + offset
-
 combined = masked_img2.copy()
-combined[:, x_split:] = masked_warped[:, x_split:]
 
-show(combined, "Combined Halves")
+offset = 20
+x_split = center[0] + offset
+
+# Maske für rechte Seite
+right_mask = np.zeros_like(circle_mask)
+right_mask[:, x_split:] = 255
+
+# Nur innerhalb Kreis UND rechts ersetzen
+mask_final = cv2.bitwise_and(circle_mask, right_mask)
+
+combined[mask_final == 255] = masked_warped[mask_final == 255]
+
+show(combined, "Combined Halves (vectorized)")
 
 final = combined
 
