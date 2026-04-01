@@ -42,6 +42,7 @@ def get_points(image_path, window_name):
         elif key == 27:
             break
 
-    cv2.destroyWindow(window_name)
+    cv2.imwrite(f'{window_name}_pts.png', clone)
+    cv2.destroyAllWindows()
     return points
 
